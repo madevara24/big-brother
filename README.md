@@ -24,10 +24,15 @@ come out of that:
    default 1-minute tick), then one recovery message the tick it clears.
    Never one message per check.
 3. **Hourly digest** -- a Discord table of min/avg/max/p95 per metric
-   over the last digest period, once per `VPSWATCH_DIGEST_INTERVAL_MINUTES`.
+   over the last digest period, sent by the first tick at or after each
+   `VPSWATCH_DIGEST_INTERVAL_MINUTES`-aligned boundary (the top of the
+   hour, at the 60-minute default) rather than an interval measured from
+   whenever vpswatch first started. A gap of several missed boundaries
+   (box was off, cron stalled) collapses into a single catch-up digest,
+   after which alignment resumes as normal.
 4. **Setup message** -- one Discord message on the very first run:
-   "big-brother is running" plus a table of current metric readings.
-   Sent once, never repeated.
+   "Big Brother is Watching You(r VPS)" plus a table of current metric
+   readings. Sent once, never repeated.
 5. **Warn tier** (off by default, `VPSWATCH_WARN_ENABLED=false`) -- a
    lower-severity heads-up below "alert" that fires once per incident
    and does not repeat.
@@ -154,9 +159,9 @@ scratch channel) and a healthchecks.io ping URL, then:
 ./vpswatch --config-dir /path/to/scratch-dir
 ```
 
-The first run should send "big-brother is running" plus a table of
-current readings, and ping healthchecks. Run it again -- the setup
-message must not repeat, but the heartbeat still fires every time.
+The first run should send "Big Brother is Watching You(r VPS)" plus a
+table of current readings, and ping healthchecks. Run it again -- the
+setup message must not repeat, but the heartbeat still fires every time.
 
 **No alert on a healthy box:** with default thresholds, a normal tick
 shouldn't send anything besides the heartbeat (and the setup message, on
@@ -176,8 +181,9 @@ tick -- a single recovery message should fire.
 
 **Hourly digest:** set `VPSWATCH_DIGEST_INTERVAL_MINUTES=1` in the
 scratch `.env`, run a few ticks a minute or so apart, and confirm a
-min/avg/max/p95 table shows up on Discord once the interval elapses,
-without needing to wait a real hour.
+min/avg/max/p95 table shows up on Discord on the first tick at or after
+the next minute boundary (the digest is boundary-aligned, not measured
+from vpswatch's own start time), without needing to wait a real hour.
 
 **Warn tier:** set `VPSWATCH_WARN_ENABLED=true` and a warn threshold
 below your current reading (e.g. `VPSWATCH_CPU_LOAD_WARN=0.001`). The

@@ -23,10 +23,18 @@ type MetricState struct {
 // a short-lived process invoked by the systemd timer, so this file (not
 // process memory) is the only place this can live.
 type State struct {
-	SetupMessageSent bool                   `json:"setup_message_sent"`
-	LastDigestAt     time.Time              `json:"last_digest_at"`
-	PrevCPUStat      *metrics.CPUStat       `json:"prev_cpu_stat,omitempty"`
-	Metrics          map[string]MetricState `json:"metrics"`
+	SetupMessageSent bool `json:"setup_message_sent"`
+	// LastDigestAt is the interval-aligned boundary (see
+	// cmd/vpswatch's nextDigestBoundary) the last digest covered up to
+	// -- e.g. 14:00:00 for an hourly digest, never the wall-clock
+	// moment the message was actually sent. Storing the boundary
+	// rather than the send time is what makes the next boundary a
+	// pure function of this value and lets digests land on the hour
+	// (or minute, for testing) regardless of when a tick happens to
+	// fire or how long the process was stopped in between.
+	LastDigestAt time.Time              `json:"last_digest_at"`
+	PrevCPUStat  *metrics.CPUStat       `json:"prev_cpu_stat,omitempty"`
+	Metrics      map[string]MetricState `json:"metrics"`
 }
 
 // GetMetricState returns the stored state for key, or a zero-value
