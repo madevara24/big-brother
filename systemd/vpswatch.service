@@ -1,0 +1,18 @@
+[Unit]
+Description=vpswatch VPS resource watchdog (one tick)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/vpswatch
+ExecStart=/opt/vpswatch/vpswatch --config-dir /opt/vpswatch
+# vpswatch reads .env itself (see internal/config), but EnvironmentFile
+# also lets `systemctl show` and journald surface the process environment
+# for debugging; a missing file here is not fatal to the unit.
+EnvironmentFile=-/opt/vpswatch/.env
+User=vpswatch
+Group=vpswatch
+
+# Each tick is short-lived by design (see README) -- no restart directive
+# needed here; vpswatch.timer is what drives the next run.

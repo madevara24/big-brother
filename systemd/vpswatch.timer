@@ -1,0 +1,11 @@
+[Unit]
+Description=Run vpswatch every minute
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Unit=vpswatch.service
+
+[Install]
+WantedBy=timers.target
