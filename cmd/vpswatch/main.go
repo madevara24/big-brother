@@ -41,10 +41,12 @@ func main() {
 	now := time.Now().UTC()
 
 	// On a brand-new install, don't fire the hourly digest right alongside
-	// the setup message with a single sample in it -- start the digest
-	// clock now instead, so the first real digest lands a full interval in.
+	// the setup message with a single sample in it -- seed the digest
+	// clock to the current interval boundary instead, so the first real
+	// digest still lands on the next hour mark (not offset by whatever
+	// minute the process first happened to start at).
 	if firstRun {
-		st.LastDigestAt = now
+		st.LastDigestAt = now.Truncate(cfg.DigestInterval)
 	}
 
 	reading, warnings := collect(st.PrevCPUStat)
@@ -107,20 +109,38 @@ func send(cfg *config.Config, msg string) {
 	}
 }
 
-// runDigestIfDue sends the hourly digest once cfg.DigestInterval has
-// elapsed since the last one, and only if there are samples to report --
-// there always will be after the append above, except if that append
-// itself failed.
+// nextDigestBoundary returns the next interval-aligned instant at or
+// after which a digest covering [last, that instant) is due. last is
+// itself expected to already be interval-aligned -- State.LastDigestAt
+// only ever holds boundaries, never wall-clock send times -- so this is
+// just "one interval past the last boundary", not a fresh truncation.
+func nextDigestBoundary(last time.Time, interval time.Duration) time.Time {
+	return last.Add(interval)
+}
+
+// digestDue reports whether now has reached or passed the next digest
+// boundary after last. A gap of several missed boundaries (box was off,
+// cron stalled) still reports due exactly once here; runDigestIfDue is
+// what collapses that gap into a single catch-up digest.
+func digestDue(last time.Time, interval time.Duration, now time.Time) bool {
+	return !now.Before(nextDigestBoundary(last, interval))
+}
+
+// runDigestIfDue sends the digest once the tick reaches the next
+// interval-aligned boundary after the last one sent, so digests land on
+// the hour (or minute, for VPSWATCH_DIGEST_INTERVAL_MINUTES=1 testing)
+// rather than wherever the process first happened to start. If several
+// boundaries were missed (box was off, cron stalled), this sends one
+// catch-up digest covering the whole gap and then snaps LastDigestAt to
+// now's own boundary, so normal alignment resumes on the next tick
+// instead of a backlog of digests draining out one per tick.
 func runDigestIfDue(cfg *config.Config, st *alert.State, samplesPath string, now time.Time) {
-	due := st.LastDigestAt.IsZero() || !now.Before(st.LastDigestAt.Add(cfg.DigestInterval))
-	if !due {
+	if !digestDue(st.LastDigestAt, cfg.DigestInterval, now) {
 		return
 	}
 
 	since := st.LastDigestAt
-	if since.IsZero() {
-		since = now.Add(-cfg.DigestInterval)
-	}
+	boundary := now.Truncate(cfg.DigestInterval)
 
 	samples, err := alert.ReadSamplesSince(samplesPath, since)
 	if err != nil {
@@ -128,7 +148,7 @@ func runDigestIfDue(cfg *config.Config, st *alert.State, samplesPath string, now
 		return
 	}
 	if len(samples) == 0 {
-		st.LastDigestAt = now
+		st.LastDigestAt = boundary
 		return
 	}
 
@@ -137,7 +157,7 @@ func runDigestIfDue(cfg *config.Config, st *alert.State, samplesPath string, now
 		fmt.Fprintf(os.Stderr, "vpswatch: digest message: %v\n", err)
 		return
 	}
-	st.LastDigestAt = now
+	st.LastDigestAt = boundary
 }
 
 // defaultConfigDir mirrors the sibling pmrunner tool's convention:

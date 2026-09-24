@@ -18,8 +18,8 @@ func formatNumber(v float64, unit string) string {
 	}
 }
 
-// BuildSetupMessage is the one-time "big-brother is running" message sent
-// on first run, with a table of current metric readings.
+// BuildSetupMessage is the one-time "Big Brother is Watching You(r VPS)"
+// message sent on first run, with a table of current metric readings.
 func BuildSetupMessage(s Sample) string {
 	t := newTable("Metric", "Current")
 	t.addRow("CPU load (1m)", formatNumber(s.CPULoad1, ""))
@@ -29,7 +29,7 @@ func BuildSetupMessage(s Sample) string {
 	for _, mount := range sortedDiskMounts(s.Disks) {
 		t.addRow("Disk "+mount, formatNumber(s.Disks[mount], "%"))
 	}
-	return "**big-brother is running**\n" + t.render()
+	return "**Big Brother is Watching You(r VPS)**\n" + t.render()
 }
 
 // BuildAlertMessage is sent once, the tick a metric first hits `debounce`

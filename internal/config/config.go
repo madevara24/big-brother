@@ -119,7 +119,11 @@ func Load(configDir string) (*Config, error) {
 	cfg.WarnEnabled = getBool("VPSWATCH_WARN_ENABLED", "false")
 
 	cfg.DigestInterval = time.Duration(getInt("VPSWATCH_DIGEST_INTERVAL_MINUTES", "60")) * time.Minute
-	cfg.SampleRetention = time.Duration(getInt("VPSWATCH_SAMPLE_RETENTION_MINUTES", "60")) * time.Minute
+	// Retention defaults to 75, comfortably more than the 60-minute
+	// digest interval default -- PruneSamples runs before the digest
+	// reads on each tick, so retention must outlast the full digest
+	// window or the earliest samples in it get pruned out from under it.
+	cfg.SampleRetention = time.Duration(getInt("VPSWATCH_SAMPLE_RETENTION_MINUTES", "75")) * time.Minute
 
 	if cfg.HealthchecksPingURL == "" {
 		errs = append(errs, "VPSWATCH_HEALTHCHECKS_PING_URL is required")
