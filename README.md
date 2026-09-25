@@ -61,10 +61,10 @@ directory:
   is what the hourly digest reads to compute min/avg/max/p95.
 - **`state.json`** -- current alert/dedupe state per metric (consecutive
   bad-check count, whether currently alerting, whether the warn message
-  for the current incident has fired), the last digest time, whether the
-  one-time setup message has been sent, and the previous `/proc/stat` CPU
-  snapshot (needed to compute the I/O wait delta across separate,
-  short-lived tick processes).
+  for the current incident has fired), the last digest time, the git
+  commit hash of the binary that last announced the setup message, and
+  the previous `/proc/stat` CPU snapshot (needed to compute the I/O wait
+  delta across separate, short-lived tick processes).
 
 Because each tick is its own short-lived process invoked by the systemd
 timer, all of this genuinely has to live on disk -- there's no
@@ -159,9 +159,11 @@ scratch channel) and a healthchecks.io ping URL, then:
 ./vpswatch --config-dir /path/to/scratch-dir
 ```
 
-The first run should send "Big Brother is Watching You(r VPS)" plus a
-table of current readings, and ping healthchecks. Run it again -- the
-setup message must not repeat, but the heartbeat still fires every time.
+The first run should send "Big Brother is Watching You(r VPS)" (build
+`<short hash>`) plus a table of current readings, and ping healthchecks.
+Run it again -- the setup message must not repeat, but the heartbeat
+still fires every time. It re-announces once after each redeploy from a
+new commit, showing the new build's short hash.
 
 **No alert on a healthy box:** with default thresholds, a normal tick
 shouldn't send anything besides the heartbeat (and the setup message, on

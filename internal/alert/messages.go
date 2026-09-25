@@ -18,9 +18,11 @@ func formatNumber(v float64, unit string) string {
 	}
 }
 
-// BuildSetupMessage is the one-time "Big Brother is Watching You(r VPS)"
-// message sent on first run, with a table of current metric readings.
-func BuildSetupMessage(s Sample) string {
+// BuildSetupMessage is the "Big Brother is Watching You(r VPS)" message
+// sent whenever the running binary's revision hasn't been announced yet
+// (first run, or a redeploy from a new commit), with a table of current
+// metric readings.
+func BuildSetupMessage(s Sample, revision string) string {
 	t := newTable("Metric", "Current")
 	t.addRow("CPU load (1m)", formatNumber(s.CPULoad1, ""))
 	t.addRow("Memory available", formatNumber(s.MemAvailMB, " MB"))
@@ -29,7 +31,16 @@ func BuildSetupMessage(s Sample) string {
 	for _, mount := range sortedDiskMounts(s.Disks) {
 		t.addRow("Disk "+mount, formatNumber(s.Disks[mount], "%"))
 	}
-	return "**Big Brother is Watching You(r VPS)**\n" + t.render()
+	return "**Big Brother is Watching You(r VPS)** (build " + shortHash(revision) + ")\n" + t.render()
+}
+
+// shortHash returns the first 7 characters of a git commit hash, for
+// display only -- the full hash is what's stored and compared.
+func shortHash(revision string) string {
+	if len(revision) <= 7 {
+		return revision
+	}
+	return revision[:7]
 }
 
 // BuildAlertMessage is sent once, the tick a metric first hits `debounce`

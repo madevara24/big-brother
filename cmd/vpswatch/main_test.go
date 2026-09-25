@@ -1,9 +1,11 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,6 +102,96 @@ func TestDigestDue(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSendSetupMessage(t *testing.T) {
+	const revA = "7f620bceec435e70704d488217a9c72ad12e4588"
+	const revB = "8d581ef1234567890abcdef1234567890abcdef1"
+
+	t.Run("no stored revision: sends once, stores full hash", func(t *testing.T) {
+		var calls int
+		var body string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			b, _ := io.ReadAll(r.Body)
+			body = string(b)
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		st := &alert.State{}
+		cfg := &config.Config{DiscordWebhookURL: srv.URL}
+
+		sendSetupMessage(revA, st, cfg, alert.Sample{})
+
+		if calls != 1 {
+			t.Fatalf("expected exactly one discord call, got %d", calls)
+		}
+		if !strings.Contains(body, "build 7f620bc") {
+			t.Errorf("expected body to contain %q, got %q", "build 7f620bc", body)
+		}
+		if st.AnnouncedRevision != revA {
+			t.Errorf("AnnouncedRevision = %q, want %q", st.AnnouncedRevision, revA)
+		}
+	})
+
+	t.Run("stored equals current: no send", func(t *testing.T) {
+		var calls int
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		st := &alert.State{AnnouncedRevision: revA}
+		cfg := &config.Config{DiscordWebhookURL: srv.URL}
+
+		sendSetupMessage(revA, st, cfg, alert.Sample{})
+
+		if calls != 0 {
+			t.Errorf("expected no discord call, got %d", calls)
+		}
+		if st.AnnouncedRevision != revA {
+			t.Errorf("AnnouncedRevision = %q, want unchanged %q", st.AnnouncedRevision, revA)
+		}
+	})
+
+	t.Run("stored differs from current: sends once, updates to new hash", func(t *testing.T) {
+		var calls int
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		st := &alert.State{AnnouncedRevision: revA}
+		cfg := &config.Config{DiscordWebhookURL: srv.URL}
+
+		sendSetupMessage(revB, st, cfg, alert.Sample{})
+
+		if calls != 1 {
+			t.Fatalf("expected exactly one discord call, got %d", calls)
+		}
+		if st.AnnouncedRevision != revB {
+			t.Errorf("AnnouncedRevision = %q, want %q", st.AnnouncedRevision, revB)
+		}
+	})
+
+	t.Run("webhook failure: stored revision unchanged, retries next tick", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		}))
+		defer srv.Close()
+
+		st := &alert.State{}
+		cfg := &config.Config{DiscordWebhookURL: srv.URL}
+
+		sendSetupMessage(revA, st, cfg, alert.Sample{})
+
+		if st.AnnouncedRevision != "" {
+			t.Errorf("AnnouncedRevision = %q, want unchanged empty string after send failure", st.AnnouncedRevision)
+		}
+	})
 }
 
 func mustTime(s string) time.Time {

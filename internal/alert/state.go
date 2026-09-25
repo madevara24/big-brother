@@ -23,7 +23,10 @@ type MetricState struct {
 // a short-lived process invoked by the systemd timer, so this file (not
 // process memory) is the only place this can live.
 type State struct {
-	SetupMessageSent bool `json:"setup_message_sent"`
+	// AnnouncedRevision is the git commit hash of the binary that last sent
+	// the setup banner. Comparing it to the running binary's hash is what
+	// re-announces the banner after a redeploy from a new commit.
+	AnnouncedRevision string `json:"announced_revision"`
 	// LastDigestAt is the interval-aligned boundary (see
 	// cmd/vpswatch's nextDigestBoundary) the last digest covered up to
 	// -- e.g. 14:00:00 for an hourly digest, never the wall-clock
@@ -52,8 +55,8 @@ func (s *State) SetMetricState(key string, ms MetricState) {
 }
 
 // LoadState reads the state file, returning a fresh zero-value State
-// (not an error) if it doesn't exist yet -- that's exactly the "first
-// run" case the setup message needs to detect.
+// (not an error) if it doesn't exist yet. "First run" for the setup
+// message is now detected as "no stored revision" (AnnouncedRevision == "").
 func LoadState(path string) (*State, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
