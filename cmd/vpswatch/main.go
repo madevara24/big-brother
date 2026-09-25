@@ -9,12 +9,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"time"
 
 	"github.com/madevara24/big-brother/internal/alert"
 	"github.com/madevara24/big-brother/internal/config"
 	"github.com/madevara24/big-brother/internal/metrics"
 )
+
+// currentRevision returns the git commit hash the running binary was
+// built from, or "" if build info isn't available (e.g. `go run`).
+func currentRevision() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			if s.Key == "vcs.revision" {
+				return s.Value
+			}
+		}
+	}
+	return ""
+}
 
 func main() {
 	configDir := flag.String("config-dir", defaultConfigDir(), "directory containing .env, state.json, and samples.log")
@@ -25,6 +39,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "vpswatch: config: %v\n", err)
 		os.Exit(1)
 	}
+
+	rev := currentRevision()
 
 	statePath := filepath.Join(*configDir, "state.json")
 	samplesPath := filepath.Join(*configDir, "samples.log")
@@ -69,14 +85,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "vpswatch: prune samples: %v\n", err)
 	}
 
-	if !st.SetupMessageSent {
-		msg := alert.BuildSetupMessage(sample)
-		if err := alert.SendDiscordMessage(cfg.DiscordWebhookURL, msg); err != nil {
-			fmt.Fprintf(os.Stderr, "vpswatch: setup message: %v\n", err)
-		} else {
-			st.SetupMessageSent = true
-		}
-	}
+	sendSetupMessage(rev, st, cfg, sample)
 
 	for _, c := range buildChecks(cfg, reading) {
 		ms := st.GetMetricState(c.Key)
@@ -107,6 +116,22 @@ func send(cfg *config.Config, msg string) {
 	if err := alert.SendDiscordMessage(cfg.DiscordWebhookURL, msg); err != nil {
 		fmt.Fprintf(os.Stderr, "vpswatch: discord message: %v\n", err)
 	}
+}
+
+// sendSetupMessage sends the setup banner whenever rev (the running
+// binary's git commit hash) hasn't been announced yet -- first run, or
+// a redeploy from a new commit. The stored revision is only updated on
+// a successful send, so a failed POST retries next tick.
+func sendSetupMessage(rev string, st *alert.State, cfg *config.Config, sample alert.Sample) {
+	if st.AnnouncedRevision == rev {
+		return
+	}
+	msg := alert.BuildSetupMessage(sample, rev)
+	if err := alert.SendDiscordMessage(cfg.DiscordWebhookURL, msg); err != nil {
+		fmt.Fprintf(os.Stderr, "vpswatch: setup message: %v\n", err)
+		return
+	}
+	st.AnnouncedRevision = rev
 }
 
 // nextDigestBoundary returns the next interval-aligned instant at or
